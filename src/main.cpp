@@ -280,547 +280,560 @@ void motor_step_reverse(uint16_t steps)
       step_index--;
 }
 
-   void motor_start(void)
+void motor_start(void)
+{
+   motor_running = 1;
+   stepcounter = 500;
+}
+
+void motor_steps_forward(uint16_t steps)
+{
+   stepcounter = 200;
+   motor_running = 1;
+}
+
+void motor_stop(void)
+{
+   motor_running = 0;
+   stepcounter = 0;
+   MOTORA_PORT &= ~((1 << MOTORA0_PIN) | (1 << MOTORA1_PIN));
+   MOTORB_PORT &= ~((1 << MOTORB0_PIN) | (1 << MOTORB1_PIN));
+}
+
+void timer1_init(void)
+{
+   // CTC-Modus
+   TCCR1A = 0;
+   TCCR1B = (1 << WGM12);
+
+   // 8 MHz / 64 = 125 kHz
+   // 125000 / 1000 Hz - 1 = 124
+   OCR1A = 150;
+
+   // Compare-Match-A Interrupt
+   TIMSK1 |= (1 << OCIE1A);
+
+   // Prescaler 64
+   // TCCR1B |= (1 << CS11) | (1 << CS10);
+   // Prescaler 256
+   TCCR1B |= (1 << CS12);
+}
+
+ISR(TIM1_COMPA_vect)
+{
+   if (motor_running)
    {
-      motor_running = 1;
-      stepcounter = 4;
-   }
-
-   void motor_steps_forward(uint16_t steps)
-   {
-      stepcounter = 200;
-      motor_running = 1;
-   }
-
-   void motor_stop(void)
-   {
-      motor_running = 0;
-      stepcounter = 0;
-      MOTORA_PORT &= ~((1 << MOTORA0_PIN) | (1 << MOTORA1_PIN));
-      MOTORB_PORT &= ~((1 << MOTORB0_PIN) | (1 << MOTORB1_PIN));
-   }
-
-   void timer1_init(void)
-   {
-      // CTC-Modus
-      TCCR1A = 0;
-      TCCR1B = (1 << WGM12);
-
-      // 8 MHz / 64 = 125 kHz
-      // 125000 / 1000 Hz - 1 = 124
-      OCR1A = 250;
-
-      // Compare-Match-A Interrupt
-      TIMSK1 |= (1 << OCIE1A);
-
-      // Prescaler 64
-      // TCCR1B |= (1 << CS11) | (1 << CS10);
-      // Prescaler 256
-      TCCR1B |= (1 << CS12);
-   }
-
-   ISR(TIM1_COMPA_vect)
-   {
-      if (motor_running)
+      if (stepcounter)
       {
-         if (stepcounter)
+
+         if (weichenstatus & (1 << ABLENKUNG))
+         {
+            motor_step_foreward(0);
+         }
+         else if (weichenstatus & (1 << GERADE))
          {
             motor_step_reverse(0);
-            // stepcounter--;
          }
-         else
-         {
-            motor_stop();
-         }
+
+         stepcounter--;
       }
-   }
-
-   // end chatty
-
-   void slaveinit(void)
-   {
-      OSZIPORT |= (1 << OSZIA); // Ausgang fuer OSZI A
-      OSZIDDR |= (1 << OSZIA);  // Ausgang fuer OSZI A
-
-      LOOPLEDDDR |= (1 << LOOPLED); // HI
-      LOOPLEDPORT |= (1 << LOOPLED);
-
-      WEICHEDIP_DDR &= ~(1 << WEICHEDIP0);
-      WEICHEDIP_DDR &= ~(1 << WEICHEDIP1);
-      WEICHEDIP_DDR &= ~(1 << WEICHEDIP2);
-      WEICHEDIP_DDR &= ~(1 << WEICHEDIP3);
-
-      WEICHEDIP_PORT |= (1 << WEICHEDIP0); // pullup
-      WEICHEDIP_PORT |= (1 << WEICHEDIP1);
-      WEICHEDIP_PORT |= (1 << WEICHEDIP2);
-      WEICHEDIP_PORT |= (1 << WEICHEDIP3);
-
-      WEICHEDDR |= (1 << WEICHEA_PIN);   // Weichedir A OUTPUT
-      WEICHEPORT &= ~(1 << WEICHEA_PIN); // LO
-
-      WEICHEDDR |= (1 << WEICHEB_PIN);   // Weichedir B OUTPUT
-      WEICHEPORT &= ~(1 << WEICHEB_PIN); // LO
-
-      maxspeed = 254;
-
-      MOTORA_DDR |= ((1 << MOTORA0_PIN) | (1 << MOTORA1_PIN));
-      MOTORB_DDR |= ((1 << MOTORB0_PIN) | (1 << MOTORB1_PIN));
-
-      // |= (1<<FIRSTRUNBIT);
-   }
-
-   void int0_init(void)
-   {
-
-      GIMSK |= (1 << INT0);                // enable external int0
-      MCUCR = (1 << ISC00 | (1 << ISC01)); // raise int0 on rising edge
-
-      INT0status = 0;
-      // sei();
-      //  INT0status |= (1<<INT0_RISING);
-      INT0status = 0;
-      INT0status |= (1 << INT0_WAIT);
-   }
-
-   void timer0(uint8_t wert)
-   {
-      // set up timer with prescaler = 1 and CTC mode
-      TCCR0A = 0;
-      TCCR0B = 0;
-
-      TCCR0A |= (1 << WGM01);
-      TCCR0B |= (1 << CS01);
-
-      // initialize counter
-      TCNT0 = 0;
-
-      // initialize compare value
-      OCR0A = wert; //
-
-      // clear interrupt flag as a precaution
-      TIFR0 |= 0x01;
-
-      // enable compare interrupt
-      TIMSK0 |= (1 << OCIE0A);
-
-      // enable global interrupts
-      // sei();
-   }
-
-   // MARK: ISR(EXT_INT0_vect)
-   ISR(EXT_INT0_vect)
-   {
-      // OSZI_A_LO();
-      {
-         // OSZI_B_LO();
-
-         if (INT0status == 0) // neue Daten beginnen
-         {
-
-            // OSZI_A_HI();
-            INT0status |= (1 << INT0_START);
-            INT0status |= (1 << INT0_WAIT); // delay, um Wert des Eingangs zum richtigen Zeitpunkt zu messen
-
-            INT0status |= (1 << INT0_PAKET_A); // erstes Paket lesen
-
-            pausecounter = 0;   // pausen detektieren, reset fuer jedes HI
-            abstandcounter = 0; // zweites Paket detektieren,
-
-            waitcounter = 0;
-            tritposition = 0;
-            funktion = 0;
-         }
-
-         else // Data im Gang, neuer Interrupt
-         {
-            INT0status |= (1 << INT0_WAIT);
-
-            pausecounter = 0;
-            abstandcounter = 0;
-            waitcounter = 0;
-            //     OSZIALO;
-         }
-      }
-      /*
       else
       {
-         INT0status = 0;
+         motor_stop();
       }
-      */
+   }
+}
+
+// end chatty
+
+void slaveinit(void)
+{
+   OSZIPORT |= (1 << OSZIA); // Ausgang fuer OSZI A
+   OSZIDDR |= (1 << OSZIA);  // Ausgang fuer OSZI A
+
+   LOOPLEDDDR |= (1 << LOOPLED); // HI
+   LOOPLEDPORT |= (1 << LOOPLED);
+
+   WEICHEDIP_DDR &= ~(1 << WEICHEDIP0);
+   WEICHEDIP_DDR &= ~(1 << WEICHEDIP1);
+   WEICHEDIP_DDR &= ~(1 << WEICHEDIP2);
+   WEICHEDIP_DDR &= ~(1 << WEICHEDIP3);
+
+   WEICHEDIP_PORT |= (1 << WEICHEDIP0); // pullup
+   WEICHEDIP_PORT |= (1 << WEICHEDIP1);
+   WEICHEDIP_PORT |= (1 << WEICHEDIP2);
+   WEICHEDIP_PORT |= (1 << WEICHEDIP3);
+
+   /*
+   WEICHEDDR |= (1 << WEICHEA_PIN);   // Weichedir A OUTPUT
+   WEICHEPORT &= ~(1 << WEICHEA_PIN); // LO
+
+   WEICHEDDR |= (1 << WEICHEB_PIN);   // Weichedir B OUTPUT
+   WEICHEPORT &= ~(1 << WEICHEB_PIN); // LO
+   */
+   maxspeed = 254;
+
+   MOTORA_DDR |= ((1 << MOTORA0_PIN) | (1 << MOTORA1_PIN));
+   MOTORB_DDR |= ((1 << MOTORB0_PIN) | (1 << MOTORB1_PIN));
+
+   // |= (1<<FIRSTRUNBIT);
+}
+
+void int0_init(void)
+{
+
+   GIMSK |= (1 << INT0);                // enable external int0
+   MCUCR = (1 << ISC00 | (1 << ISC01)); // raise int0 on rising edge
+
+   INT0status = 0;
+   // sei();
+   //  INT0status |= (1<<INT0_RISING);
+   INT0status = 0;
+   INT0status |= (1 << INT0_WAIT);
+}
+
+void timer0(uint8_t wert)
+{
+   // set up timer with prescaler = 1 and CTC mode
+   TCCR0A = 0;
+   TCCR0B = 0;
+
+   TCCR0A |= (1 << WGM01);
+   TCCR0B |= (1 << CS01);
+
+   // initialize counter
+   TCNT0 = 0;
+
+   // initialize compare value
+   OCR0A = wert; //
+
+   // clear interrupt flag as a precaution
+   TIFR0 |= 0x01;
+
+   // enable compare interrupt
+   TIMSK0 |= (1 << OCIE0A);
+
+   // enable global interrupts
+   // sei();
+}
+
+// MARK: ISR(EXT_INT0_vect)
+ISR(EXT_INT0_vect)
+{
+   // OSZI_A_LO();
+   {
+      // OSZI_B_LO();
+
+      if (INT0status == 0) // neue Daten beginnen
+      {
+
+         // OSZI_A_HI();
+         INT0status |= (1 << INT0_START);
+         INT0status |= (1 << INT0_WAIT); // delay, um Wert des Eingangs zum richtigen Zeitpunkt zu messen
+
+         INT0status |= (1 << INT0_PAKET_A); // erstes Paket lesen
+
+         pausecounter = 0;   // pausen detektieren, reset fuer jedes HI
+         abstandcounter = 0; // zweites Paket detektieren,
+
+         waitcounter = 0;
+         tritposition = 0;
+         funktion = 0;
+      }
+
+      else // Data im Gang, neuer Interrupt
+      {
+         INT0status |= (1 << INT0_WAIT);
+
+         pausecounter = 0;
+         abstandcounter = 0;
+         waitcounter = 0;
+         //     OSZIALO;
+      }
+   }
+   /*
+   else
+   {
+      INT0status = 0;
+   }
+   */
+}
+
+// MARK: ISR Timer0
+ISR(TIM0_COMPA_vect) // 2.5us.  Schaltet Impuls an MOTORB_PIN LO wenn speed
+{
+   
+   if (weichenstatus & (1 << WEICHESTART)) // Impuls noch ON
+   {
+
+      if (weichenimpulscounter > WEICHENIMPULSDAUER)
+      {
+         // Impuls beenden
+         // weichenstatus &= ~(1 << ABLENKUNG);
+         // weichenstatus &= ~(1 << GERADE);
+         // WEICHEPORT &= ~(1 << WEICHEA_PIN);
+         // WEICHEPORT &= ~(1 << WEICHEB_PIN);
+
+         weichenstatus &= ~(1 << WEICHESTART);
+
+         // Wait starten
+         weichenstatus |= (1 << WEICHEWAIT);
+         weichewaitcounter = 0;
+      }
+      else
+      {
+         weichenimpulscounter++;
+      }
    }
 
-   // MARK: ISR Timer0
-   ISR(TIM0_COMPA_vect) // 2.5us.  Schaltet Impuls an MOTORB_PIN LO wenn speed
+   if (weichenstatus & (1 << WEICHEWAIT))
    {
-      if (weichenstatus & (1 << WEICHESTART)) // Impuls noch ON
+
+      if (weichewaitcounter > WEICHENWAITDAUER)
       {
-
-         if (weichenimpulscounter > WEICHENIMPULSDAUER)
-         {
-            // Impuls beenden
-            weichenstatus &= ~(1 << ABLENKUNG);
-            weichenstatus &= ~(1 << GERADE);
-            WEICHEPORT &= ~(1 << WEICHEA_PIN);
-            WEICHEPORT &= ~(1 << WEICHEB_PIN);
-
-            weichenstatus &= ~(1 << WEICHESTART);
-
-            // Wait starten
-            weichenstatus |= (1 << WEICHEWAIT);
-            weichewaitcounter = 0;
-         }
-         else
-         {
-            weichenimpulscounter++;
-         }
+         weichenstatus &= ~(1 << WEICHEWAIT);
       }
-
-      if (weichenstatus & (1 << WEICHEWAIT))
+      else
       {
-
-         if (weichewaitcounter > WEICHENWAITDAUER)
-         {
-            weichenstatus &= ~(1 << WEICHEWAIT);
-         }
-         else
-         {
-            weichewaitcounter++; // noch warten, doppelte Pulse vermeiden
-         }
+         weichewaitcounter++; // noch warten, doppelte Pulse vermeiden
       }
-
-      // MARK: TIMER0 TIMER0_COMPA INT0
-      if (INT0status & (1 << INT0_WAIT))
+   }
+   
+   // MARK: TIMER0 TIMER0_COMPA INT0
+   if (INT0status & (1 << INT0_WAIT))
+   {
+      waitcounter++;
+      if (waitcounter > 2) // Impulsdauer > minimum, nach einer gewissen Zeit den Stautus abfragen
       {
-         waitcounter++;
-         if (waitcounter > 2) // Impulsdauer > minimum, nach einer gewissen Zeit den Stautus abfragen
+
+         // OSZI_A_LO();
+         // OSZIAHI;
+
+         INT0status &= ~(1 << INT0_WAIT);
+         if (INT0status & (1 << INT0_PAKET_A))
          {
-
-            // OSZI_A_LO();
-            // OSZIAHI;
-
-            INT0status &= ~(1 << INT0_WAIT);
-            if (INT0status & (1 << INT0_PAKET_A))
+            // OSZI_B_LO();
+            if (tritposition < 8) // Adresse)
             {
-               // OSZI_B_LO();
-               if (tritposition < 8) // Adresse)
+               if (INPIN & (1 << DATAPIN)) // Pin HI,
                {
-                  if (INPIN & (1 << DATAPIN)) // Pin HI,
-                  {
-                     lokadresseA |= (1 << tritposition); // bit ist 1
-                  }
-                  else //
-                  {
-                     lokadresseA &= ~(1 << tritposition); // bit ist 0
-                  }
+                  lokadresseA |= (1 << tritposition); // bit ist 1
                }
-               else if (tritposition < 10) // Funktion
+               else //
                {
-                  if (INPIN & (1 << DATAPIN)) // Pin HI,
-                  {
-                     rawfunktionA |= (1 << (tritposition - 8)); // bit ist 1
-                  }
-                  else //
-                  {
-                     rawfunktionA &= ~(1 << (tritposition - 8)); // bit ist 0
-                  }
+                  lokadresseA &= ~(1 << tritposition); // bit ist 0
                }
+            }
+            else if (tritposition < 10) // Funktion
+            {
+               if (INPIN & (1 << DATAPIN)) // Pin HI,
+               {
+                  rawfunktionA |= (1 << (tritposition - 8)); // bit ist 1
+               }
+               else //
+               {
+                  rawfunktionA &= ~(1 << (tritposition - 8)); // bit ist 0
+               }
+            }
 
+            else
+            {
+               if (INPIN & (1 << DATAPIN)) // Pin HI,
+               {
+                  rawdataA |= (1 << ((tritposition - 10))); // bit ist 1
+               }
+               else //
+               {
+                  rawdataA &= ~(1 << (tritposition - 10)); // bit ist 0
+               }
+            }
+         }
+
+         if (INT0status & (1 << INT0_PAKET_B))
+         {
+            if (tritposition < 8) // Adresse)
+            {
+
+               if (INPIN & (1 << DATAPIN)) // Pin HI,
+               {
+                  lokadresseB |= (1 << tritposition); // bit ist 1
+               }
+               else //
+               {
+                  lokadresseB &= ~(1 << tritposition); // bit ist 0
+               }
+            }
+            else if (tritposition < 10) // bit 8,9: funktion
+            {
+               if (INPIN & (1 << DATAPIN)) // Pin HI,
+               {
+                  rawfunktionB |= (1 << (tritposition - 8)); // bit ist 1
+               }
+               else //
+               {
+                  rawfunktionB &= ~(1 << (tritposition - 8)); // bit ist 0
+               }
+            }
+
+            else
+            {
+               if (INPIN & (1 << DATAPIN)) // Pin HI,
+               {
+                  rawdataB |= (1 << (tritposition - 10)); // bit ist 1
+               }
                else
                {
-                  if (INPIN & (1 << DATAPIN)) // Pin HI,
-                  {
-                     rawdataA |= (1 << ((tritposition - 10))); // bit ist 1
-                  }
-                  else //
-                  {
-                     rawdataA &= ~(1 << (tritposition - 10)); // bit ist 0
-                  }
+                  rawdataB &= ~(1 << (tritposition - 10)); // bit ist 0
                }
             }
 
-            if (INT0status & (1 << INT0_PAKET_B))
+            if (!(lokadresseB == LOK_ADRESSE))
             {
-               if (tritposition < 8) // Adresse)
-               {
-
-                  if (INPIN & (1 << DATAPIN)) // Pin HI,
-                  {
-                     lokadresseB |= (1 << tritposition); // bit ist 1
-                  }
-                  else //
-                  {
-                     lokadresseB &= ~(1 << tritposition); // bit ist 0
-                  }
-               }
-               else if (tritposition < 10) // bit 8,9: funktion
-               {
-                  if (INPIN & (1 << DATAPIN)) // Pin HI,
-                  {
-                     rawfunktionB |= (1 << (tritposition - 8)); // bit ist 1
-                  }
-                  else //
-                  {
-                     rawfunktionB &= ~(1 << (tritposition - 8)); // bit ist 0
-                  }
-               }
-
-               else
-               {
-                  if (INPIN & (1 << DATAPIN)) // Pin HI,
-                  {
-                     rawdataB |= (1 << (tritposition - 10)); // bit ist 1
-                  }
-                  else
-                  {
-                     rawdataB &= ~(1 << (tritposition - 10)); // bit ist 0
-                  }
-               }
-
-               if (!(lokadresseB == LOK_ADRESSE))
-               {
-               }
             }
+         }
 
-            if (tritposition < 17)
+         if (tritposition < 17)
+         {
+            tritposition++;
+         }
+         else // Paket gelesen
+         {
+
+            // Paket A?
+            if (INT0status & (1 << INT0_PAKET_A)) // erstes Paket, Werte speichern
             {
-               tritposition++;
+
+               oldfunktion = funktion;
+
+               INT0status &= ~(1 << INT0_PAKET_A); // Bit fuer erstes Paket weg
+               INT0status |= (1 << INT0_PAKET_B);  // Bit fuer zweites Paket setzen
+               tritposition = 0;
             }
-            else // Paket gelesen
+            else if (INT0status & (1 << INT0_PAKET_B)) // zweites Paket, Werte testen
             {
+               OSZIALO;
+               // SYNC_LO();
+               // displaystatus |= (1<<DISPLAY_GO);
+               //  // Displayfenster begin
 
-               // Paket A?
-               if (INT0status & (1 << INT0_PAKET_A)) // erstes Paket, Werte speichern
+               // displayfenstercounter = MAXFENSTERCOUNT;
+               //  MARK: EQUAL
+               if (lokadresseA && ((rawfunktionA == rawfunktionB) && (rawdataA == rawdataB) && (lokadresseA == lokadresseB))) // Lokadresse > 0 und Lokadresse und Data OK
                {
-
-                  oldfunktion = funktion;
-
-                  INT0status &= ~(1 << INT0_PAKET_A); // Bit fuer erstes Paket weg
-                  INT0status |= (1 << INT0_PAKET_B);  // Bit fuer zweites Paket setzen
-                  tritposition = 0;
-               }
-               else if (INT0status & (1 << INT0_PAKET_B)) // zweites Paket, Werte testen
-               {
-                  OSZIALO;
-                  // SYNC_LO();
-                  // displaystatus |= (1<<DISPLAY_GO);
-                  //  // Displayfenster begin
-
-                  // displayfenstercounter = MAXFENSTERCOUNT;
-                  //  MARK: EQUAL
-                  if (lokadresseA && ((rawfunktionA == rawfunktionB) && (rawdataA == rawdataB) && (lokadresseA == lokadresseB))) // Lokadresse > 0 und Lokadresse und Data OK
+                  // OSZIALO;
+                  //  SYNC_LO();
+                  if (lokadresseB == LOK_ADRESSE) // Adresse stimmt
                   {
+
+                     // weichenstatus |= (1<<WEICHERUN);
+
                      // OSZIALO;
-                     //  SYNC_LO();
-                     if (lokadresseB == LOK_ADRESSE) // Adresse stimmt
+                     //   TEST1_LO();
+                     //  OSZI_B_LO();
+                     //   Daten uebernehmen
+
+                     lokstatus |= (1 << ADDRESSBIT);
+                     deflokadresse = lokadresseB;
+                     // deffunktion = (rawdataB & 0x03); // bit 0,1 funktion als eigene var
+                     deffunktion = rawfunktionB;
+
+                     if (deffunktion)
                      {
-
-                        // weichenstatus |= (1<<WEICHERUN);
-
-                        // OSZIALO;
-                        //   TEST1_LO();
-                        //  OSZI_B_LO();
-                        //   Daten uebernehmen
-
-                        lokstatus |= (1 << ADDRESSBIT);
-                        deflokadresse = lokadresseB;
-                        // deffunktion = (rawdataB & 0x03); // bit 0,1 funktion als eigene var
-                        deffunktion = rawfunktionB;
-
-                        if (deffunktion)
-                        {
-                           lokstatus |= (1 << FUNKTIONBIT);
-                           ledstatus |= (1 << LED_CHANGEBIT); // change setzen
-                        }
-                        else
-                        {
-                           lokstatus &= ~(1 << FUNKTIONBIT);
-                           ledstatus |= (1 << LED_CHANGEBIT); // led-change setzen
-                        }
-                        // deflokdata aufbauen
-                        for (uint8_t i = 0; i < 8; i++)
-                        {
-                           // if ((rawdataB & (1<<(2+i))))
-                           if ((rawdataB & (1 << i)))
-                           {
-                              deflokdata |= (1 << i);
-                           }
-                           else
-                           {
-                              deflokdata &= ~(1 << i);
-                           }
-                        }
-
-                        // Weichennummer checken
-                        WEICHENCODE = 0xFF;
-                        WEICHENCODE = WEICHEDIP_PIN & 0x07;
-
-                        WEICHENCODE = 7 - WEICHENCODE; // dipschalter ist active LOW > invertieren
-
-                        if (deflokdata == speedcodelookuptable[WEICHENCODE]) // Weiche passt
-                        {
-                           // OSZIALO;
-                           if (weichenstatus & (1 << WEICHEWAIT))
-                           {
-                           }
-                           // weichenimpulscounter = 0;
-                           else if (!(weichenstatus & (1 << WEICHESTART)))
-                           {
-                              // Weiche starten
-
-                              weichenstatus |= (1 << WEICHESTART);
-                              weichenimpulscounter = 0;
-                              // OSZI_B_LO();
-                              // motor_steps_forward(100);
-
-                              if (lokstatus & (1 << FUNKTIONBIT)) // Weiche auf Ablenkung stellen
-                              {
-                                 weichenstatus |= (1 << ABLENKUNG);
-                                 weichenstatus &= ~(1 << GERADE);
-                                 WEICHEPORT &= ~(1 << WEICHEA_PIN);
-                                 WEICHEPORT |= (1 << WEICHEB_PIN);
-                              }
-                              else // Weiche auf Gerade stellen
-                              {
-                                 weichenstatus |= (1 << GERADE);
-                                 weichenstatus &= ~(1 << ABLENKUNG);
-                                 WEICHEPORT |= (1 << WEICHEA_PIN);
-                                 WEICHEPORT &= ~(1 << WEICHEB_PIN);
-                              }
-                           }
-                        }
-                        else
-                        {
-                           /*
-                           weichenstatus &= ~(1<<ABLENKUNG);
-                           weichenstatus &= ~(1<<GERADE);
-                           WEICHEPORT &= ~(1<<WEICHEA_PIN);
-                           WEICHEPORT &= ~(1<<WEICHEB_PIN);
-                           //weichenstatus |= (1<<WEICHEOFF);
-                           */
-                        }
-                        OSZIAHI;
+                        lokstatus |= (1 << FUNKTIONBIT);
+                        ledstatus |= (1 << LED_CHANGEBIT); // change setzen
                      }
                      else
                      {
-                        // aussteigen
-                        INT0status = 0;
-
-                        return;
+                        lokstatus &= ~(1 << FUNKTIONBIT);
+                        ledstatus |= (1 << LED_CHANGEBIT); // led-change setzen
+                     }
+                     // deflokdata aufbauen
+                     for (uint8_t i = 0; i < 8; i++)
+                     {
+                        // if ((rawdataB & (1<<(2+i))))
+                        if ((rawdataB & (1 << i)))
+                        {
+                           deflokdata |= (1 << i);
+                        }
+                        else
+                        {
+                           deflokdata &= ~(1 << i);
+                        }
                      }
 
-                  } // if (lokadresseA &&...
+                     // Weichennummer checken
+                     WEICHENCODE = 0xFF;
+                     WEICHENCODE = WEICHEDIP_PIN & 0x07;
+
+                     WEICHENCODE = 7 - WEICHENCODE; // dipschalter ist active LOW > invertieren
+
+                     if (deflokdata == speedcodelookuptable[WEICHENCODE]) // Weiche passt
+                     {
+                        // OSZIALO;
+                        if (weichenstatus & (1 << WEICHEWAIT))
+                        {
+                        }
+                        // weichenimpulscounter = 0;
+                        else if (!(weichenstatus & (1 << WEICHESTART)))
+                        {
+                           // Weiche starten
+
+                           weichenstatus |= (1 << WEICHESTART);
+                           weichenimpulscounter = 0;
+                           // OSZI_B_LO();
+
+                           // motor_steps_forward(100);
+                           stepcounter = 200;
+                           motor_running = 1;
+                           if (lokstatus & (1 << FUNKTIONBIT)) // Weiche auf Ablenkung stellen
+                           {
+                              weichenstatus |= (1 << ABLENKUNG);
+                              weichenstatus &= ~(1 << GERADE);
+                              // WEICHEPORT &= ~(1 << WEICHEA_PIN);
+                              // WEICHEPORT |= (1 << WEICHEB_PIN);
+                           }
+                           else // Weiche auf Gerade stellen
+                           {
+                              weichenstatus |= (1 << GERADE);
+                              weichenstatus &= ~(1 << ABLENKUNG);
+                              // WEICHEPORT |= (1 << WEICHEA_PIN);
+                              // WEICHEPORT &= ~(1 << WEICHEB_PIN);
+                           }
+                        }
+                     }
+                     else
+                     {
+                        /*
+                        weichenstatus &= ~(1<<ABLENKUNG);
+                        weichenstatus &= ~(1<<GERADE);
+                        WEICHEPORT &= ~(1<<WEICHEA_PIN);
+                        WEICHEPORT &= ~(1<<WEICHEB_PIN);
+                        //weichenstatus |= (1<<WEICHEOFF);
+                        */
+                     }
+                     OSZIAHI;
+                  }
                   else
                   {
-                     lokstatus &= ~(1 << ADDRESSBIT);
-
+                     // aussteigen
                      INT0status = 0;
+
                      return;
                   }
 
-                  INT0status |= (1 << INT0_END);
-                  if (INT0status & (1 << INT0_PAKET_B))
-                  {
-                     //               TESTPORT |= (1<<TEST2);
-                  }
-               } // End Paket B
-            }
-            OSZIAHI;
-         } // waitcounter > 2
-      } // if INT0_WAIT
+               } // if (lokadresseA &&...
+               else
+               {
+                  lokstatus &= ~(1 << ADDRESSBIT);
 
-      if (INPIN & (1 << DATAPIN)) // Pin HI, input   im Gang
-      {
-         //      HIimpulsdauer++; // zaehlen
-      }
-      else // LO, input fertig, Bilanz
-      {
-         if (abstandcounter < 20)
-         {
-            abstandcounter++;
-         }
-         else // if (abstandcounter ) // Paket 2
-         {
-            abstandcounter = 0;
-            // OSZIAHI;
-         }
+                  INT0status = 0;
+                  return;
+               }
 
-         if (pausecounter < 120)
-         {
-            pausecounter++; // pausencounter incrementieren
+               INT0status |= (1 << INT0_END);
+               if (INT0status & (1 << INT0_PAKET_B))
+               {
+                  //               TESTPORT |= (1<<TEST2);
+               }
+            } // End Paket B
          }
-         else
-         {
-            pausecounter = 0;
-            INT0status = 0; // Neue Daten abwarten
-            return;
-         }
+         OSZIAHI;
+      } // waitcounter > 2
+   } // if INT0_WAIT
 
-      } // input LO
-      // OSZI_B_HI();
-   } // TIME0
-
-   int main(void)
+   if (INPIN & (1 << DATAPIN)) // Pin HI, input   im Gang
    {
-      // WDT ausschalten
-      MCUSR = 0;
-      wdt_disable();
-      //   lastDIR = 1;
-      slaveinit();
-
-      int0_init();
-      _delay_ms(2);
-
-      timer0(4);
-      uint16_t loopcount0 = 0;
-      uint16_t loopcount1 = 0;
-
-      _delay_ms(2);
-
-      timer1_init();
-
-      oldfunktion = 0x03; // 0x02
-      oldlokdata = 0xCC;  //
-
-      // WDT
-      // https://bigdanzblog.wordpress.com/2015/07/20/resetting-rebooting-attiny85-with-watchdog-timer-wdt/
-
-      wdt_reset();
-      ledpwm = LEDPWM;
-
-      uint8_t i = 0;
-      for (i = 0; i < 15; i++)
-      {
-         // speedlookup[i] = speedlookuptable[SPEEDINDEX][i]; // soeedlookup fuer Lok laden
-      }
-      motor_start();
-      sei();
-      while (1)
-      {
-         // Timing: loop: 40 us, takt 85us, mit if-teil 160 us
-         wdt_reset();
-         {
-
-            loopcount1++;
-            if (loopcount1 >= speedchangetakt)
-            {
-               LOOPLEDPORT ^= (1 << LOOPLED); // Kontrolle lastDIR
-               loopcount1 = 0;
-               // motor_step();
-               //  OSZIATOG;
-
-            } // loopcount1 >= speedchangetakt
-
-         } // Source OK
-
-         loopcount0++;
-         if (loopcount0 >= refreshtakt)
-         {
-
-            loopcount0 = 0;
-
-         } // loopcount0>=refreshtakt
-
-         // OSZIAHI;
-      } // while
-      return 0;
+      //      HIimpulsdauer++; // zaehlen
    }
+   else // LO, input fertig, Bilanz
+   {
+      if (abstandcounter < 20)
+      {
+         abstandcounter++;
+      }
+      else // if (abstandcounter ) // Paket 2
+      {
+         abstandcounter = 0;
+         // OSZIAHI;
+      }
+
+      if (pausecounter < 120)
+      {
+         pausecounter++; // pausencounter incrementieren
+      }
+      else
+      {
+         pausecounter = 0;
+         INT0status = 0; // Neue Daten abwarten
+         return;
+      }
+
+   } // input LO
+   // OSZI_B_HI();
+} // TIME0
+
+int main(void)
+{
+   // WDT ausschalten
+   MCUSR = 0;
+   wdt_disable();
+   //   lastDIR = 1;
+   slaveinit();
+
+   int0_init();
+   _delay_ms(2);
+
+   timer0(4);
+   uint16_t loopcount0 = 0;
+   uint16_t loopcount1 = 0;
+
+   _delay_ms(2);
+
+   timer1_init();
+
+   oldfunktion = 0x03; // 0x02
+   oldlokdata = 0xCC;  //
+
+   // WDT
+   // https://bigdanzblog.wordpress.com/2015/07/20/resetting-rebooting-attiny85-with-watchdog-timer-wdt/
+
+   wdt_reset();
+   ledpwm = LEDPWM;
+
+   uint8_t i = 0;
+   for (i = 0; i < 15; i++)
+   {
+      // speedlookup[i] = speedlookuptable[SPEEDINDEX][i]; // soeedlookup fuer Lok laden
+   }
+   motor_start();
+   sei();
+   while (1)
+   {
+      // Timing: loop: 40 us, takt 85us, mit if-teil 160 us
+      wdt_reset();
+      {
+
+         loopcount1++;
+         if (loopcount1 >= speedchangetakt)
+         {
+            LOOPLEDPORT ^= (1 << LOOPLED); // Kontrolle lastDIR
+            loopcount1 = 0;
+            // motor_step();
+            //  OSZIATOG;
+
+         } // loopcount1 >= speedchangetakt
+
+      } // Source OK
+
+      loopcount0++;
+      if (loopcount0 >= refreshtakt)
+      {
+
+         loopcount0 = 0;
+
+      } // loopcount0>=refreshtakt
+
+      // OSZIAHI;
+   } // while
+   return 0;
+}
