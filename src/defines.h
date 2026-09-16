@@ -25,7 +25,7 @@
 #define OSZIPORT  PORTA      // Ausgang fuer OSZI
 #define OSZIDDR   DDRA
 
-#define OSZIA 4           // 
+#define OSZIA 6           // 
 
 
 
@@ -65,8 +65,8 @@
 
 //PINS
 
-#define MOTORA_PIN      0
-#define MOTORB_PIN      1
+//#define MOTORA_PIN      0
+//#define MOTORB_PIN      1
 
 
 
