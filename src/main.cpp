@@ -340,6 +340,8 @@ ISR(TIM1_COMPA_vect)
       else
       {
          motor_stop();
+         weichenstatus &= ~(1 << WEICHESTART);
+
       }
    }
 }
@@ -462,7 +464,7 @@ ISR(EXT_INT0_vect)
 // MARK: ISR Timer0
 ISR(TIM0_COMPA_vect) // 2.5us.  Schaltet Impuls an MOTORB_PIN LO wenn speed
 {
-   
+   /*
    if (weichenstatus & (1 << WEICHESTART)) // Impuls noch ON
    {
 
@@ -474,7 +476,7 @@ ISR(TIM0_COMPA_vect) // 2.5us.  Schaltet Impuls an MOTORB_PIN LO wenn speed
          // WEICHEPORT &= ~(1 << WEICHEA_PIN);
          // WEICHEPORT &= ~(1 << WEICHEB_PIN);
 
-         weichenstatus &= ~(1 << WEICHESTART);
+        // weichenstatus &= ~(1 << WEICHESTART);
 
          // Wait starten
          weichenstatus |= (1 << WEICHEWAIT);
@@ -485,7 +487,8 @@ ISR(TIM0_COMPA_vect) // 2.5us.  Schaltet Impuls an MOTORB_PIN LO wenn speed
          weichenimpulscounter++;
       }
    }
-
+   */
+   /*
    if (weichenstatus & (1 << WEICHEWAIT))
    {
 
@@ -498,7 +501,7 @@ ISR(TIM0_COMPA_vect) // 2.5us.  Schaltet Impuls an MOTORB_PIN LO wenn speed
          weichewaitcounter++; // noch warten, doppelte Pulse vermeiden
       }
    }
-   
+  */ 
    // MARK: TIMER0 TIMER0_COMPA INT0
    if (INT0status & (1 << INT0_WAIT))
    {
