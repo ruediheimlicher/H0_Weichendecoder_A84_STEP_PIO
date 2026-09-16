@@ -13,6 +13,8 @@
 #include <stdint.h>
 #include <avr/eeprom.h>
 
+#include <Stepper.h>
+
 #include "defines.h"
 //***********************************
 /*
